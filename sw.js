@@ -17,7 +17,7 @@
  * 판을 바꿀 때는 VERSION 을 올린다. 옛 판은 다음 실행에서 지워진다.
  */
 
-const VERSION = 'v9'
+const VERSION = 'v10'
 const SHELL = `parentway-shell-${VERSION}` // 화면(HTML)
 const ASSETS = `parentway-assets-${VERSION}` // /_next/static — 이름에 해시가 있어 안 바뀐다
 const KEEP = [SHELL, ASSETS]
