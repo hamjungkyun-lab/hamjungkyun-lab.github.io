@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ko">
+<!--
+  기기 초기화 — 이 브라우저에 저장된 참교육 기록을 전부 지운다.
+
+  ★ 서버가 없는 앱이라 기록은 전부 이 기기 안에 있다.
+    처음부터 다시 해보고 싶은 사람(테스터)이 설정을 파고들지 않고
+    주소 하나로 지울 수 있게 한다. 남의 기록은 건드릴 수 없다 —
+    이 페이지는 연 사람 자신의 브라우저만 지운다.
+-->
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>참교육 — 처음부터 다시</title>
+  <style>
+    body { margin: 0; display: flex; min-height: 100dvh; align-items: center; justify-content: center;
+           background: #fdfcfa; color: #191722;
+           font-family: -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; }
+    @media (prefers-color-scheme: dark) { body { background: #131219; color: #f3f1f8; } }
+    .box { text-align: center; padding: 24px; }
+    h1 { font-size: 22px; margin: 0 0 8px; }
+    p { font-size: 16px; opacity: .75; line-height: 1.6; margin: 0 0 20px; }
+    button { font: inherit; font-weight: 700; font-size: 17px; padding: 14px 28px; border: 0;
+             border-radius: 14px; background: #6b5bff; color: #fff; cursor: pointer; }
+    .quiet { background: transparent; color: inherit; opacity: .6; font-weight: 400; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>처음부터 다시 시작할까요?</h1>
+    <p>이 브라우저에 저장된 기록이 전부 지워져요.<br />가족 설정, 상황 연습, 기록, 일기, 사진까지요.</p>
+    <button id="go">전부 지우고 처음부터</button>
+    <div style="margin-top:10px"><button class="quiet" onclick="location.href='/'">그냥 돌아가기</button></div>
+  </div>
+  <script>
+    document.getElementById('go').addEventListener('click', async () => {
+      try { localStorage.clear() } catch {}
+      try { sessionStorage.clear() } catch {}
+      // 사진 (IndexedDB 'parentway') — databases() 가 없는 브라우저는 이름으로 지운다
+      try {
+        const dbs = indexedDB.databases ? await indexedDB.databases() : [{ name: 'parentway' }]
+        await Promise.all(dbs.map((d) => d.name && new Promise((r) => {
+          const req = indexedDB.deleteDatabase(d.name)
+          req.onsuccess = req.onerror = req.onblocked = () => r()
+        })))
+      } catch {}
+      // 오프라인 캐시와 서비스워커 — 옛 판이 남아 있지 않게
+      try {
+        const keys = await caches.keys()
+        await Promise.all(keys.map((k) => caches.delete(k)))
+      } catch {}
+      try {
+        const regs = await navigator.serviceWorker.getRegistrations()
+        await Promise.all(regs.map((r) => r.unregister()))
+      } catch {}
+      location.replace('/')
+    })
+  </script>
+</body>
+</html>
