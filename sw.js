@@ -17,7 +17,7 @@
  * 판을 바꿀 때는 VERSION 을 올린다. 옛 판은 다음 실행에서 지워진다.
  */
 
-const VERSION = 'v24'
+const VERSION = 'v25'
 const SHELL = `parentway-shell-${VERSION}` // 화면(HTML)
 const ASSETS = `parentway-assets-${VERSION}` // /_next/static — 이름에 해시가 있어 안 바뀐다
 const KEEP = [SHELL, ASSETS]
@@ -190,3 +190,74 @@ const OFFLINE = `<!doctype html>
   </main>
 </body>
 </html>`
+
+
+/* ── 매일 알림 ─────────────────────────────────────
+ *
+ * ★ 사용자가 화면에서 켠 것만 울린다.
+ *   설정은 화면이 postMessage 로 넘겨 주고(워커는 localStorage 를 못 읽는다),
+ *   여기 IndexedDB 에 담아 둔다. 하루 한 번, 정한 시각 '이후 즈음'.
+ * ★ 빚을 만들지 않는다 — "며칠째 안 오셨어요" 같은 말은 없다.
+ */
+const KV_DB = 'parentway-sw'
+
+function kvStore(mode, run) {
+  return new Promise((resolve, reject) => {
+    const open = indexedDB.open(KV_DB, 1)
+    open.onupgradeneeded = () => open.result.createObjectStore('kv')
+    open.onerror = () => reject(open.error)
+    open.onsuccess = () => {
+      const db = open.result
+      const tx = db.transaction('kv', mode)
+      const req = run(tx.objectStore('kv'))
+      tx.oncomplete = () => {
+        db.close()
+        resolve(req && req.result)
+      }
+      tx.onerror = () => {
+        db.close()
+        reject(tx.error)
+      }
+    }
+  })
+}
+const kvGet = (k) => kvStore('readonly', (st) => st.get(k)).catch(() => undefined)
+const kvSet = (k, v) => kvStore('readwrite', (st) => st.put(v, k)).catch(() => undefined)
+
+self.addEventListener('message', (e) => {
+  const d = e.data
+  if (d && d.type === 'reminder') {
+    e.waitUntil ? e.waitUntil(kvSet('reminder', { on: d.on, hour: d.hour })) : kvSet('reminder', { on: d.on, hour: d.hour })
+  }
+})
+
+async function maybeNotify() {
+  const pref = await kvGet('reminder')
+  if (!pref || !pref.on) return
+  const now = new Date()
+  // 정한 시각 전이면 이번 깨어남은 넘긴다 — 다음 깨어남이 그 뒤에 온다
+  if (now.getHours() < pref.hour) return
+  const today = now.toDateString()
+  if ((await kvGet('reminderShown')) === today) return
+  await kvSet('reminderShown', today)
+  await self.registration.showNotification('참교육', {
+    body: '오늘 것이 하나 준비돼 있어요. 잠깐 볼까요?',
+    icon: '/apple-icon.png',
+    badge: '/apple-icon.png',
+    tag: 'daily-reminder',
+  })
+}
+
+self.addEventListener('periodicsync', (e) => {
+  if (e.tag === 'daily-reminder') e.waitUntil(maybeNotify())
+})
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close()
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      for (const c of list) if ('focus' in c) return c.focus()
+      return self.clients.openWindow('/')
+    }),
+  )
+})
