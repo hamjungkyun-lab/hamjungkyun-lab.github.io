@@ -17,7 +17,7 @@
  * 판을 바꿀 때는 VERSION 을 올린다. 옛 판은 다음 실행에서 지워진다.
  */
 
-const VERSION = 'v50'
+const VERSION = 'v51'
 const SHELL = `parentway-shell-${VERSION}` // 화면(HTML)
 const ASSETS = `parentway-assets-${VERSION}` // /_next/static — 이름에 해시가 있어 안 바뀐다
 const KEEP = [SHELL, ASSETS]
@@ -230,7 +230,47 @@ self.addEventListener('message', (e) => {
   if (d && d.type === 'reminder') {
     e.waitUntil ? e.waitUntil(kvSet('reminder', { on: d.on, hour: d.hour })) : kvSet('reminder', { on: d.on, hour: d.hour })
   }
+  // 다가오는 진료 — 화면이 기록이 바뀔 때마다 통째로 넘긴다 (끄면 빈 목록)
+  if (d && d.type === 'visits' && Array.isArray(d.items)) {
+    e.waitUntil ? e.waitUntil(kvSet('visits', d.items)) : kvSet('visits', d.items)
+  }
 })
+
+/* ── 다음 진료 알림 ─────────────────────────────────
+ *
+ * 전날 저녁 6시 이후 즈음 한 번, 당일 아침 7시 이후 즈음 한 번.
+ * ★ 지난 진료는 울리지 않는다. 같은 알림을 두 번 울리지 않게 울린 것을 적어 둔다.
+ */
+function localKey(dt) {
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+}
+
+async function maybeNotifyVisits() {
+  const items = (await kvGet('visits')) || []
+  if (items.length === 0) return
+  const now = new Date()
+  const today = localKey(now)
+  const tomorrow = localKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1))
+  const shown = (await kvGet('visitsShown')) || []
+  for (const v of items) {
+    let when = null
+    if (v.date === tomorrow && now.getHours() >= 18) when = 'eve'
+    else if (v.date === today && now.getHours() >= 7) when = 'day'
+    if (!when) continue
+    const key = `${v.id}|${v.date}|${when}`
+    if (shown.includes(key)) continue
+    shown.push(key)
+    await self.registration.showNotification('참교육', {
+      body: `${when === 'eve' ? '내일' : '오늘'} ${v.title}가 있어요.`,
+      icon: '/apple-icon.png',
+      badge: '/apple-icon.png',
+      tag: `visit-${v.id}-${when}`,
+      data: { url: '/diary?tab=record' },
+    })
+  }
+  // 오래된 표시는 버린다 — 끝없이 쌓이지 않게
+  await kvSet('visitsShown', shown.slice(-60))
+}
 
 async function maybeNotify() {
   const pref = await kvGet('reminder')
@@ -250,15 +290,22 @@ async function maybeNotify() {
 }
 
 self.addEventListener('periodicsync', (e) => {
-  if (e.tag === 'daily-reminder') e.waitUntil(maybeNotify())
+  if (e.tag === 'daily-reminder') e.waitUntil(Promise.all([maybeNotify(), maybeNotifyVisits()]))
+  if (e.tag === 'visit-reminder') e.waitUntil(maybeNotifyVisits())
 })
 
 self.addEventListener('notificationclick', (e) => {
   e.notification.close()
   e.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
-      for (const c of list) if ('focus' in c) return c.focus()
-      return self.clients.openWindow('/')
+      const url = (e.notification.data && e.notification.data.url) || '/'
+      for (const c of list) {
+        if ('focus' in c) {
+          if (url !== '/' && 'navigate' in c) c.navigate(url)
+          return c.focus()
+        }
+      }
+      return self.clients.openWindow(url)
     }),
   )
 })
