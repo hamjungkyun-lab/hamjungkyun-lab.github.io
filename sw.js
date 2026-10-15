@@ -17,7 +17,7 @@
  * 판을 바꿀 때는 VERSION 을 올린다. 옛 판은 다음 실행에서 지워진다.
  */
 
-const VERSION = 'v49'
+const VERSION = 'v50'
 const SHELL = `parentway-shell-${VERSION}` // 화면(HTML)
 const ASSETS = `parentway-assets-${VERSION}` // /_next/static — 이름에 해시가 있어 안 바뀐다
 const KEEP = [SHELL, ASSETS]
@@ -33,7 +33,7 @@ const KEEP = [SHELL, ASSETS]
  */
 // 홈 타일이 가리키는 화면은 전부 담는다 — 대기실에서 신호가 끊겼을 때
 // 타일을 눌렀는데 홈이 다시 뜨면 '앱이 먹통'으로 읽힌다.
-const PRECACHE = ['/', '/search', '/diary', '/notes', '/play', '/record', '/summary',
+const PRECACHE = ['/', '/search', '/diary', '/notes', '/play', '/summary',
   '/today', '/approach', '/choices', '/past', '/report', '/quiz', '/quiz/result', '/start',
   '/backup']
 
